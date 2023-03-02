@@ -1,0 +1,29 @@
+{
+  "name": "fivetran-robin",
+  "version": "1.0.0",
+  "description": "",
+  "main": "lambda.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "prebuild": "rm -rf dist",
+    "build": "tsc",
+    "postbuild": "cp package.json package-lock.json dist/ && cd dist && zip -r ../latest.zip ."
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Setfive/fivetran-robin.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Setfive/fivetran-robin/issues"
+  },
+  "homepage": "https://github.com/Setfive/fivetran-robin#readme",
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.111",
+    "@types/aws-sdk": "^2.7.0",
+    "@types/node": "^18.14.4",
+    "aws-sdk": "^2.1327.0",
+    "typescript": "^4.9.5"
+  }
+}
