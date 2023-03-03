@@ -7,7 +7,7 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "prebuild": "rm -rf dist",
     "build": "tsc",
-    "postbuild": "cp package.json package-lock.json dist/ && cd dist && zip -r ../latest.zip ."
+    "postbuild": "cp package.json package-lock.json dist/ && cd dist && npm install --production && zip -r ../latest.zip ."
   },
   "repository": {
     "type": "git",

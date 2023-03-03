@@ -82,6 +82,7 @@ async function doFetchRecords(request: IFivetranRequest): Promise<IDoFetchResult
         if(request.secrets.startDate) {
             cursorDate = moment(request.secrets.startDate).startOf('day');
         }else{
+            // TODO: What is the first date we should try?
             cursorDate = moment('2008-01-01T00:00:00Z');
         }
 
@@ -124,7 +125,7 @@ async function doFetchRecords(request: IFivetranRequest): Promise<IDoFetchResult
         }
     }
 
-    console.log(JSON.stringify(createExportResult));
+    console.log(JSON.stringify(createExportResult, null, 4));
 
     if(createExportResult.meta.status !== 'ACCEPTED') {
         return {
@@ -164,7 +165,7 @@ async function doFetchRecords(request: IFivetranRequest): Promise<IDoFetchResult
                 if(axiosError.status !== 404) {
                     return {
                         success: false,
-                        error: `Robin API Error: HTTP ${axiosError.code} ${JSON.stringify(axiosError.response?.data)}`
+                        error: `Robin API Error: HTTP (${axiosError.status}) ${axiosError.code} ${JSON.stringify(axiosError.response?.data)}`
                     };
                 }
             }else{
@@ -215,9 +216,9 @@ export const handler = async (request: IFivetranRequest, context: Context): Prom
     try {
         fetchResult = await fetchRecords(request);
     }catch(e) {
-        console.error(e);
+        const msg = e instanceof Error ? e.message : 'NONE';
         return {
-            errorMessage: JSON.stringify(e),
+            errorMessage: msg,
             errorType: 'FetchRecordsError',
             stackTrace: new Error().stack,
         }
@@ -277,6 +278,9 @@ async function fetchRecords(request: IFivetranRequest): Promise<IFetchResponse> 
     const createdAtDates = data
                           .map(item => moment(item['Created At (UTC)'], 'MM-DD-YYYY hh:mm:ss'))
                           .sort((a, b) => a.diff(b));
+
+    console.log(JSON.stringify(createdAtDates));
+
     const nextCursor = createdAtDates.length ? createdAtDates[ createdAtDates.length - 1 ].format() : request.state.cursor;
 
     return {

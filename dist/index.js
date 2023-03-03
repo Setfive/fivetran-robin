@@ -46,12 +46,13 @@ async function doFetchRecords(request) {
             cursorDate = (0, moment_1.default)(request.secrets.startDate).startOf('day');
         }
         else {
+            // TODO: What is the first date we should try?
             cursorDate = (0, moment_1.default)('2008-01-01T00:00:00Z');
         }
         startDate = cursorDate.format();
     }
-    if (now.diff(cursorDate, 'days') > 185) {
-        const cursorEndDate = cursorDate.add(185, 'day').endOf('day');
+    if (now.diff(cursorDate, 'days') > 15) {
+        const cursorEndDate = cursorDate.add(15, 'day').endOf('day');
         endDate = cursorEndDate.format();
     }
     else {
@@ -85,7 +86,7 @@ async function doFetchRecords(request) {
             };
         }
     }
-    console.log(JSON.stringify(createExportResult));
+    console.log(JSON.stringify(createExportResult, null, 4));
     if (createExportResult.meta.status !== 'ACCEPTED') {
         return {
             success: false,
@@ -118,7 +119,7 @@ async function doFetchRecords(request) {
                 if (axiosError.status !== 404) {
                     return {
                         success: false,
-                        error: `Robin API Error: HTTP ${axiosError.code} ${JSON.stringify(axiosError.response?.data)}`
+                        error: `Robin API Error: HTTP (${axiosError.status}) ${axiosError.code} ${JSON.stringify(axiosError.response?.data)}`
                     };
                 }
             }
@@ -161,9 +162,9 @@ const handler = async (request, context) => {
         fetchResult = await fetchRecords(request);
     }
     catch (e) {
-        console.error(e);
+        const msg = e instanceof Error ? e.message : 'NONE';
         return {
-            errorMessage: JSON.stringify(e),
+            errorMessage: msg,
             errorType: 'FetchRecordsError',
             stackTrace: new Error().stack,
         };
@@ -217,6 +218,7 @@ async function fetchRecords(request) {
     const createdAtDates = data
         .map(item => (0, moment_1.default)(item['Created At (UTC)'], 'MM-DD-YYYY hh:mm:ss'))
         .sort((a, b) => a.diff(b));
+    console.log(JSON.stringify(createdAtDates));
     const nextCursor = createdAtDates.length ? createdAtDates[createdAtDates.length - 1].format() : request.state.cursor;
     return {
         nextCursor: `${nextCursor}`,
@@ -230,4 +232,3 @@ async function fetchRecords(request) {
         }
     };
 }
-//# sourceMappingURL=index.js.map
