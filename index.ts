@@ -6,6 +6,8 @@ import { parse } from 'csv-parse/sync';
 
 const s3 = new AWS.S3();
 
+const TARGET_TABLE_NAME = 'robin_analytics';
+
 interface IFivetranRequest {
     state: {cursor: string | undefined};
     secrets: {apiKey: string, organizationId: string, startDate?: string};
@@ -34,12 +36,8 @@ interface IFivetranError {
 
 interface IFetchResponse {
     s3Data: {
-        insert: {
-            transactions: unknown[]
-        },
-        delete: {
-            transactions: unknown[]
-        }
+        insert: unknown[]
+        delete: unknown[]
     },
     nextCursor: string;
 }
@@ -162,7 +160,7 @@ async function doFetchRecords(request: IFivetranRequest): Promise<IDoFetchResult
 
             if(axios.isAxiosError(e)) {
                 const axiosError = (e as AxiosError);
-                if(axiosError.status !== 404) {
+                if(axiosError.code !== 'ERR_BAD_REQUEST') {
                     return {
                         success: false,
                         error: `Robin API Error: HTTP (${axiosError.status}) ${axiosError.code} ${JSON.stringify(axiosError.response?.data)}`
@@ -224,9 +222,14 @@ export const handler = async (request: IFivetranRequest, context: Context): Prom
         }
     }
 
-    console.log(`Received: Inserts = ${fetchResult.s3Data.insert.transactions.length}, Deletes =  ${fetchResult.s3Data.delete.transactions.length}`);
+    console.log(`Received: Inserts = ${fetchResult.s3Data.insert.length}, Deletes =  ${fetchResult.s3Data.delete.length}`);
 
-    const s3Result = await copyToS3(request.bucket, request.file, JSON.stringify(fetchResult.s3Data));
+    const s3DataFile = {
+        insert: {[TARGET_TABLE_NAME]: fetchResult.s3Data.insert},
+        delete: {[TARGET_TABLE_NAME]: fetchResult.s3Data.delete}
+    };
+    
+    const s3Result = await copyToS3(request.bucket, request.file, JSON.stringify(s3DataFile));
 
     if(!s3Result.success) {
         return {
@@ -276,22 +279,16 @@ async function fetchRecords(request: IFivetranRequest): Promise<IFetchResponse> 
     const data = result.data ?? [];
     // TODO: Is this the correct date field to use to move the "cursor" forward?
     const createdAtDates = data
-                          .map(item => moment(item['Created At (UTC)'], 'MM-DD-YYYY hh:mm:ss'))
+                          .map(item => moment(item['Created At (UTC)'], 'YYYY-MM-DD hh:mm:ss'))
                           .sort((a, b) => a.diff(b));
-
-    console.log(JSON.stringify(createdAtDates));
 
     const nextCursor = createdAtDates.length ? createdAtDates[ createdAtDates.length - 1 ].format() : request.state.cursor;
 
     return {
         nextCursor: `${nextCursor}`,
         s3Data: {
-            delete: {
-                transactions: [],
-            },
-            insert: {
-                transactions: data
-            }
+            delete: [],
+            insert: data
         }
     }
 }
