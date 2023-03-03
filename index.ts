@@ -3,65 +3,20 @@ import * as AWS from 'aws-sdk';
 import moment from 'moment';
 import axios, { AxiosError } from 'axios';
 import { parse } from 'csv-parse/sync';
+import {
+    IDoFetchResult,
+    IFetchResponse,
+    IFivetranError,
+    IFivetranRequest,
+    IFivetranResult,
+    IRobinAnalyticsResult, IS3CopyResult
+} from "./types";
 
 const s3 = new AWS.S3();
 
 const TARGET_TABLE_NAME = 'robin_analytics';
 
-interface IFivetranRequest {
-    state: {cursor: string | undefined};
-    secrets: {apiKey: string, organizationId: string, startDate?: string};
-    bucket: string;
-    file: string;
-}
 
-interface IFivetranResult {
-    state: {
-        transactionsCursor: string;
-    };
-    // TODO: Fix this type
-    schema: any,
-    hasMore: boolean
-}
-
-interface IFivetranError {
-    errorMessage: string;
-    errorType: string;
-    stackTrace: any;
-}
-
-interface IFetchResponse {
-    s3Data: {
-        insert: unknown[]
-        delete: unknown[]
-    },
-    nextCursor: string;
-}
-
-interface IS3CopyResult {
-    success: boolean;
-    error?: string;
-}
-
-interface IRobinAnalyticsResult {
-    meta: {
-        status_code: number,
-        status: 'ACCEPTED' | 'BAD_REQUEST' | 'NOT_FOUND',
-        message: string,
-        more_info: unknown,
-        errors: string[]
-    },
-    data: {
-        export_id: string,
-        report_id: string,
-    }
-}
-
-interface IDoFetchResult {
-    success: boolean;
-    error?: string;
-    data?: Record<string, string>[];
-}
 
 export const handler = async (request: IFivetranRequest, context: Context): Promise<IFivetranResult | IFivetranError> => {
     const missingSecrets: string[] = [];
