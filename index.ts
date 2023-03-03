@@ -2,6 +2,7 @@ import { Context } from 'aws-lambda';
 import * as AWS from 'aws-sdk';
 import moment from 'moment';
 import axios, { AxiosError } from 'axios';
+import { parse } from 'csv-parse/sync';
 
 const s3 = new AWS.S3();
 
@@ -65,7 +66,7 @@ interface IRobinAnalyticsResult {
 interface IDoFetchResult {
     success: boolean;
     error?: string;
-    data?: string;
+    data?: Record<string, string>[];
 }
 
 async function doFetchRecords(request: IFivetranRequest): Promise<IDoFetchResult> {
@@ -87,8 +88,8 @@ async function doFetchRecords(request: IFivetranRequest): Promise<IDoFetchResult
         startDate = cursorDate.format();
     }
 
-    if(now.diff(cursorDate, 'days') > 185) {
-        const cursorEndDate = cursorDate.add(185, 'day').endOf('day');
+    if(now.diff(cursorDate, 'days') > 15) {
+        const cursorEndDate = cursorDate.add(15, 'day').endOf('day');
         endDate = cursorEndDate.format();
     }else{
         endDate = now.format();
@@ -113,7 +114,7 @@ async function doFetchRecords(request: IFivetranRequest): Promise<IDoFetchResult
             const axiosError = (e as AxiosError);
             return {
                 success: false,
-                error: `Robin API Error: HTTP ${axiosError.code} ${axiosError.response?.data}`
+                error: `Robin API Error: HTTP ${axiosError.code} ${JSON.stringify(axiosError.response?.data)}`
             };
         }else{
             return {
@@ -150,17 +151,20 @@ async function doFetchRecords(request: IFivetranRequest): Promise<IDoFetchResult
                 }
             });
 
+            const records = parse(apiResult.data, {columns: true});
+
             return {
                 success: true,
-                data: apiResult.data
+                data: records
             };
-        }catch(e) {
+        }catch(e){
+
             if(axios.isAxiosError(e)) {
                 const axiosError = (e as AxiosError);
-                if(axiosError.code !== '404') {
+                if(axiosError.status !== 404) {
                     return {
                         success: false,
-                        error: `Robin API Error: HTTP ${axiosError.code} ${axiosError.response?.data}`
+                        error: `Robin API Error: HTTP ${axiosError.code} ${JSON.stringify(axiosError.response?.data)}`
                     };
                 }
             }else{
@@ -171,13 +175,13 @@ async function doFetchRecords(request: IFivetranRequest): Promise<IDoFetchResult
             }
         }
 
-        sleepTime = sleepTime * 2;
+        sleepTime = Math.ceil(sleepTime * 1.5);
         numAttempts += 1;
-    }while(numAttempts < 10);
+    }while(numAttempts < 5);
 
     return {
         success: false,
-        error: `Robin API Error: Tried 10 times and gave up.`
+        error: `Robin API Error: Tried 5 times and gave up on ${url}`
     };
 }
 
@@ -185,20 +189,24 @@ async function sleep(sleepTimeMs: number) {
     return new Promise<void>((resolve, reject) => setTimeout(resolve, sleepTimeMs * 1000))
 }
 
-(async () => {
-    const data = await doFetchRecords({
-        "state": {"cursor": "2020-01-01T00:00:00Z"},
-        "secrets": {apiKey: `${process.env.ROBIN_KEY}`, organizationId: '34', startDate: "2020-01-01T00:00:00Z"},
-        "bucket": "setfive-robin-sync",
-        "file": "test2.csv",
-    });
-
-    console.log(data);
-})();
-
 export const handler = async (request: IFivetranRequest, context: Context): Promise<IFivetranResult | IFivetranError> => {
+    const missingSecrets: string[] = [];
 
-    // TODO: Verify the required secrets are present and error if not
+    if(!request.secrets.apiKey) {
+        missingSecrets.push('apiKey');
+    }
+
+    if(!request.secrets.organizationId) {
+        missingSecrets.push('organizationId');
+    }
+
+    if(missingSecrets.length) {
+        return {
+            errorMessage: `Your Fivetran configuration is missing these secrets: ${missingSecrets.join(', ')}`,
+            errorType: 'SecretsError',
+            stackTrace: new Error().stack,
+        }
+    }
 
     console.log(`Cursor: ${request.state.cursor}, Destination: s3://${request.bucket}/${request.file}`);
 
@@ -259,93 +267,26 @@ async function copyToS3(bucket: string, key: string, data: string): Promise<IS3C
 }
 
 async function fetchRecords(request: IFivetranRequest): Promise<IFetchResponse> {
+    const result = await doFetchRecords(request);
+    if(!result.success) {
+        throw new Error(result.error);
+    }
+
+    const data = result.data ?? [];
+    // TODO: Is this the correct date field to use to move the "cursor" forward?
+    const createdAtDates = data
+                          .map(item => moment(item['Created At (UTC)'], 'MM-DD-YYYY hh:mm:ss'))
+                          .sort((a, b) => a.diff(b));
+    const nextCursor = createdAtDates.length ? createdAtDates[ createdAtDates.length - 1 ].format() : request.state.cursor;
+
     return {
-        nextCursor: '2018-01-01T00:00:00Z',
+        nextCursor: `${nextCursor}`,
         s3Data: {
             delete: {
                 transactions: [],
             },
             insert: {
-                transactions: [
-                    {
-                        "Organization": "Robin",
-                        "Building": "87 Summer Street",
-                        "Floor": "",
-                        "Space": "Conference Room",
-                        "Space ID": 23253,
-                        "Event ID": "207480119_20230101T043000Z",
-                        "Event Status": "CONFIRMED",
-                        "Created At (UTC)": "2022-09-18 04:08:41",
-                        "Updated At (UTC)": "2022-09-18 04:08:41",
-                        "All Day Event": "FALSE",
-                        "Title": "Test Recurring",
-                        "Is Recurring": "TRUE",
-                        "Capacity": 8,
-                        "Invited People": 1,
-                        "Attendees": 1,
-                        "Location": "Nicholas' Cage",
-                        "Started At (UTC)": "2023-01-01 04:30:00",
-                        "Ended At (UTC)": "2023-01-01 04:35:00",
-                        "Minute Duration": 5,
-                        "Checked In At (UTC)": "",
-                        "Minutes Delayed": "",
-                        "Automatically Unbooked At (UTC)": "",
-                        "Creator Robin ID": "",
-                        "Creator Robin Name": "",
-                        "Creator Department": "",
-                        "Creator Groups": "",
-                        "Creator Robin Email": "",
-                        "Created By Email": "conference-room@robinpowered.onmicrosoft.com",
-                        "Host Robin ID": "",
-                        "Host Robin Name": "",
-                        "Host Department": "",
-                        "Host Groups": "",
-                        "Host Robin Email": "conference-room@robinpowered.onmicrosoft.com",
-                        "Hosting Calendar Email": "conference-room@robinpowered.onmicrosoft.com",
-                        "Local Creator ID": "",
-                        "Local Creator Email": "",
-                        "Cancellation Type": ""
-                    },
-                    {
-                        "Organization": "Robin",
-                        "Building": "87 Summer Street",
-                        "Floor": "",
-                        "Space": "Conference Room",
-                        "Space ID": 23253,
-                        "Event ID": "207480121_20230101T180000Z",
-                        "Event Status": "CONFIRMED",
-                        "Created At (UTC)": "2022-09-18 04:08:41",
-                        "Updated At (UTC)": "2022-09-18 04:08:41",
-                        "All Day Event": "FALSE",
-                        "Title": "Zach Dunn in Nicholas' Cage",
-                        "Is Recurring": "TRUE",
-                        "Capacity": 8,
-                        "Invited People": 1,
-                        "Attendees": 1,
-                        "Location": "Nicholas' Cage",
-                        "Started At (UTC)": "2023-01-01 18:00:00",
-                        "Ended At (UTC)": "2023-01-01 18:30:00",
-                        "Minute Duration": 30,
-                        "Checked In At (UTC)": "",
-                        "Minutes Delayed": "",
-                        "Automatically Unbooked At (UTC)": "",
-                        "Creator Robin ID": "",
-                        "Creator Robin Name": "",
-                        "Creator Department": "",
-                        "Creator Groups": "",
-                        "Creator Robin Email": "",
-                        "Created By Email": "conference-room@robinpowered.onmicrosoft.com",
-                        "Host Robin ID": "",
-                        "Host Robin Name": "",
-                        "Host Department": "",
-                        "Host Groups": "",
-                        "Host Robin Email": "conference-room@robinpowered.onmicrosoft.com",
-                        "Hosting Calendar Email": "conference-room@robinpowered.onmicrosoft.com",
-                        "Local Creator ID": "",
-                        "Local Creator Email": "",
-                        "Cancellation Type": ""
-                    }
-                ],
+                transactions: data
             }
         }
     }
