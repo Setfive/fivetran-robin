@@ -15,16 +15,12 @@ interface IFivetranRequest {
     file: string;
 }
 
-// NOTE: The destination table will be named "transactions"
 interface IFivetranResult {
     state: {
         transactionsCursor: string;
     };
-    schema: {
-        transactions: {
-            primary_key: ['Event ID']
-        }
-    },
+    // TODO: Fix this type
+    schema: any,
     hasMore: boolean
 }
 
@@ -125,7 +121,7 @@ export const handler = async (request: IFivetranRequest, context: Context): Prom
             transactionsCursor: fetchResult.nextCursor
         },
         schema: {
-            transactions: {
+            [TARGET_TABLE_NAME]: {
                 primary_key: ['Event ID']
             }
         },

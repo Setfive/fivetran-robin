@@ -80,7 +80,7 @@ const handler = async (request, context) => {
             transactionsCursor: fetchResult.nextCursor
         },
         schema: {
-            transactions: {
+            [TARGET_TABLE_NAME]: {
                 primary_key: ['Event ID']
             }
         },
