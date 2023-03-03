@@ -1,7 +1,7 @@
-import { Context, APIGatewayProxyResult, APIGatewayEvent } from 'aws-lambda';
+import { Context } from 'aws-lambda';
 import * as AWS from 'aws-sdk';
 import moment from 'moment';
-import axios from 'axios';
+import axios, { AxiosError } from 'axios';
 
 const s3 = new AWS.S3();
 
@@ -98,41 +98,103 @@ async function doFetchRecords(request: IFivetranRequest): Promise<IDoFetchResult
 
     const url = `https://api.robinpowered.com/v1.0/insights/exports/organizations/${request.secrets.organizationId}/spaces`;
     const payload = {from: startDate, to: endDate};
-    const apiResult = await axios.post<IRobinAnalyticsResult>(url, payload, {headers: {Authorization: `Access-Token ${request.secrets.apiKey}`, 'Content-Type': 'application/json'}});
+    let createExportResult: IRobinAnalyticsResult;
 
-    if(apiResult.data.meta.status !== 'ACCEPTED') {
+    try {
+        const apiResult = await axios.post<IRobinAnalyticsResult>(url, payload, {
+            headers: {
+                Authorization: `Access-Token ${request.secrets.apiKey}`,
+                'Content-Type': 'application/json'
+            }
+        });
+        createExportResult = apiResult.data;
+    }catch(e) {
+        if(axios.isAxiosError(e)) {
+            const axiosError = (e as AxiosError);
+            return {
+                success: false,
+                error: `Robin API Error: HTTP ${axiosError.code} ${axiosError.response?.data}`
+            };
+        }else{
+            return {
+                success: false,
+                error: `${JSON.stringify(e)}`
+            };
+        }
+    }
+
+    console.log(JSON.stringify(createExportResult));
+
+    if(createExportResult.meta.status !== 'ACCEPTED') {
         return {
             success: false,
-            error: `${apiResult.data.meta.status}: ${apiResult.data.meta.message}`
+            error: `${createExportResult.meta.status}: ${createExportResult.meta.message}`
         };
     }
 
-    const exportId = apiResult.data.data.export_id;
-    let sleepTime = 1;
+    const exportId = createExportResult.data.export_id;
+    let sleepTime = 10;
     let numAttempts = 0;
-    let data = '';
 
     do {
         await sleep(sleepTime);
         const url = `https://api.robinpowered.com/v1.0/insights/exports/${exportId}`;
-        const apiResult = await axios.get<IRobinAnalyticsResult>(url, {headers: {Authorization: `Access-Token ${request.secrets.apiKey}`, 'Content-Type': 'application/json'}});
+
+        console.log(`Trying: ${url}`);
+
+        try {
+            const apiResult = await axios.get<string>(url, {
+                headers: {
+                    Authorization: `Access-Token ${request.secrets.apiKey}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            return {
+                success: true,
+                data: apiResult.data
+            };
+        }catch(e) {
+            if(axios.isAxiosError(e)) {
+                const axiosError = (e as AxiosError);
+                if(axiosError.code !== '404') {
+                    return {
+                        success: false,
+                        error: `Robin API Error: HTTP ${axiosError.code} ${axiosError.response?.data}`
+                    };
+                }
+            }else{
+                return {
+                    success: false,
+                    error: `${JSON.stringify(e)}`
+                };
+            }
+        }
 
         sleepTime = sleepTime * 2;
         numAttempts += 1;
     }while(numAttempts < 10);
 
+    return {
+        success: false,
+        error: `Robin API Error: Tried 10 times and gave up.`
+    };
 }
 
 async function sleep(sleepTimeMs: number) {
     return new Promise<void>((resolve, reject) => setTimeout(resolve, sleepTimeMs * 1000))
 }
 
-doFetchRecords({
-    "state": {"cursor": "2020-01-01T00:00:00Z"},
-    "secrets": {apiKey: `${process.env.ROBIN_KEY}`, organizationId: '34', startDate: "2020-01-01T00:00:00Z"},
-    "bucket": "setfive-robin-sync",
-    "file": "test2.csv",
-})
+(async () => {
+    const data = await doFetchRecords({
+        "state": {"cursor": "2020-01-01T00:00:00Z"},
+        "secrets": {apiKey: `${process.env.ROBIN_KEY}`, organizationId: '34', startDate: "2020-01-01T00:00:00Z"},
+        "bucket": "setfive-robin-sync",
+        "file": "test2.csv",
+    });
+
+    console.log(data);
+})();
 
 export const handler = async (request: IFivetranRequest, context: Context): Promise<IFivetranResult | IFivetranError> => {
 
