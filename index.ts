@@ -37,7 +37,7 @@ export const handler = async (request: IFivetranRequest, context: Context): Prom
         }
     }
 
-    console.log(`Cursor: ${request.state.cursor}, Destination: s3://${request.bucket}/${request.file}`);
+    console.log(`Cursor: ${request.state.transactionsCursor}, Destination: s3://${request.bucket}/${request.file}`);
 
     let fetchResult: IFetchResponse;
 
@@ -69,9 +69,8 @@ export const handler = async (request: IFivetranRequest, context: Context): Prom
         }
     }
 
-    const hasMore = fetchResult.nextCursor !== request.state.cursor;
-
-    return {
+    const hasMore = fetchResult.nextCursor !== request.state.transactionsCursor;
+    const result = {
         state: {
             transactionsCursor: fetchResult.nextCursor
         },
@@ -82,6 +81,10 @@ export const handler = async (request: IFivetranRequest, context: Context): Prom
         },
         hasMore: hasMore
     };
+
+    console.log(JSON.stringify(result, null, 4));
+
+    return result;
 };
 
 async function doFetchRecords(request: IFivetranRequest): Promise<IDoFetchResult> {
@@ -90,9 +93,9 @@ async function doFetchRecords(request: IFivetranRequest): Promise<IDoFetchResult
     let cursorDate: moment.Moment;
     const now = moment();
 
-    if(request.state.cursor) {
-        cursorDate = moment(request.state.cursor).startOf('day');
-        startDate = request.state.cursor;
+    if(request.state.transactionsCursor) {
+        cursorDate = moment(request.state.transactionsCursor).startOf('day');
+        startDate = request.state.transactionsCursor;
     }else{
         if(request.secrets.startDate) {
             cursorDate = moment(request.secrets.startDate).startOf('day');
@@ -235,7 +238,7 @@ async function fetchRecords(request: IFivetranRequest): Promise<IFetchResponse> 
                           .map(item => moment(item['Created At (UTC)'], 'YYYY-MM-DD hh:mm:ss'))
                           .sort((a, b) => a.diff(b));
 
-    const nextCursor = createdAtDates.length ? createdAtDates[ createdAtDates.length - 1 ].format() : request.state.cursor;
+    const nextCursor = createdAtDates.length ? createdAtDates[ createdAtDates.length - 1 ].format() : request.state.transactionsCursor;
 
     return {
         nextCursor: `${nextCursor}`,

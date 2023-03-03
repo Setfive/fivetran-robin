@@ -48,7 +48,7 @@ const handler = async (request, context) => {
             stackTrace: new Error().stack,
         };
     }
-    console.log(`Cursor: ${request.state.cursor}, Destination: s3://${request.bucket}/${request.file}`);
+    console.log(`Cursor: ${request.state.transactionsCursor}, Destination: s3://${request.bucket}/${request.file}`);
     let fetchResult;
     try {
         fetchResult = await fetchRecords(request);
@@ -74,8 +74,8 @@ const handler = async (request, context) => {
             stackTrace: new Error().stack,
         };
     }
-    const hasMore = fetchResult.nextCursor !== request.state.cursor;
-    return {
+    const hasMore = fetchResult.nextCursor !== request.state.transactionsCursor;
+    const result = {
         state: {
             transactionsCursor: fetchResult.nextCursor
         },
@@ -86,6 +86,8 @@ const handler = async (request, context) => {
         },
         hasMore: hasMore
     };
+    console.log(JSON.stringify(result, null, 4));
+    return result;
 };
 exports.handler = handler;
 async function doFetchRecords(request) {
@@ -93,9 +95,9 @@ async function doFetchRecords(request) {
     let endDate = '';
     let cursorDate;
     const now = (0, moment_1.default)();
-    if (request.state.cursor) {
-        cursorDate = (0, moment_1.default)(request.state.cursor).startOf('day');
-        startDate = request.state.cursor;
+    if (request.state.transactionsCursor) {
+        cursorDate = (0, moment_1.default)(request.state.transactionsCursor).startOf('day');
+        startDate = request.state.transactionsCursor;
     }
     else {
         if (request.secrets.startDate) {
@@ -224,7 +226,7 @@ async function fetchRecords(request) {
     const createdAtDates = data
         .map(item => (0, moment_1.default)(item['Created At (UTC)'], 'YYYY-MM-DD hh:mm:ss'))
         .sort((a, b) => a.diff(b));
-    const nextCursor = createdAtDates.length ? createdAtDates[createdAtDates.length - 1].format() : request.state.cursor;
+    const nextCursor = createdAtDates.length ? createdAtDates[createdAtDates.length - 1].format() : request.state.transactionsCursor;
     return {
         nextCursor: `${nextCursor}`,
         s3Data: {

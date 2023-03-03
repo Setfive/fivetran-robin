@@ -1,5 +1,5 @@
 export interface IFivetranRequest {
-    state: {cursor: string | undefined};
+    state: {transactionsCursor: string | undefined};
     secrets: {apiKey: string, organizationId: string, startDate?: string};
     bucket: string;
     file: string;
