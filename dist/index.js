@@ -33,6 +33,61 @@ const axios_1 = __importDefault(require("axios"));
 const sync_1 = require("csv-parse/sync");
 const s3 = new AWS.S3();
 const TARGET_TABLE_NAME = 'robin_analytics';
+const handler = async (request, context) => {
+    const missingSecrets = [];
+    if (!request.secrets.apiKey) {
+        missingSecrets.push('apiKey');
+    }
+    if (!request.secrets.organizationId) {
+        missingSecrets.push('organizationId');
+    }
+    if (missingSecrets.length) {
+        return {
+            errorMessage: `Your Fivetran configuration is missing these secrets: ${missingSecrets.join(', ')}`,
+            errorType: 'SecretsError',
+            stackTrace: new Error().stack,
+        };
+    }
+    console.log(`Cursor: ${request.state.cursor}, Destination: s3://${request.bucket}/${request.file}`);
+    let fetchResult;
+    try {
+        fetchResult = await fetchRecords(request);
+    }
+    catch (e) {
+        const msg = e instanceof Error ? e.message : 'NONE';
+        return {
+            errorMessage: msg,
+            errorType: 'FetchRecordsError',
+            stackTrace: new Error().stack,
+        };
+    }
+    console.log(`Received: Inserts = ${fetchResult.s3Data.insert.length}, Deletes =  ${fetchResult.s3Data.delete.length}`);
+    const s3DataFile = {
+        insert: { [TARGET_TABLE_NAME]: fetchResult.s3Data.insert },
+        delete: { [TARGET_TABLE_NAME]: fetchResult.s3Data.delete }
+    };
+    const s3Result = await copyToS3(request.bucket, request.file, JSON.stringify(s3DataFile));
+    if (!s3Result.success) {
+        return {
+            errorMessage: `${s3Result.error}`,
+            errorType: 'CopyToS3Error',
+            stackTrace: new Error().stack,
+        };
+    }
+    const hasMore = fetchResult.nextCursor !== request.state.cursor;
+    return {
+        state: {
+            transactionsCursor: fetchResult.nextCursor
+        },
+        schema: {
+            transactions: {
+                primary_key: ['Event ID']
+            }
+        },
+        hasMore: hasMore
+    };
+};
+exports.handler = handler;
 async function doFetchRecords(request) {
     let startDate = '';
     let endDate = '';
@@ -142,60 +197,6 @@ async function doFetchRecords(request) {
 async function sleep(sleepTimeMs) {
     return new Promise((resolve, reject) => setTimeout(resolve, sleepTimeMs * 1000));
 }
-const handler = async (request, context) => {
-    const missingSecrets = [];
-    if (!request.secrets.apiKey) {
-        missingSecrets.push('apiKey');
-    }
-    if (!request.secrets.organizationId) {
-        missingSecrets.push('organizationId');
-    }
-    if (missingSecrets.length) {
-        return {
-            errorMessage: `Your Fivetran configuration is missing these secrets: ${missingSecrets.join(', ')}`,
-            errorType: 'SecretsError',
-            stackTrace: new Error().stack,
-        };
-    }
-    console.log(`Cursor: ${request.state.cursor}, Destination: s3://${request.bucket}/${request.file}`);
-    let fetchResult;
-    try {
-        fetchResult = await fetchRecords(request);
-    }
-    catch (e) {
-        const msg = e instanceof Error ? e.message : 'NONE';
-        return {
-            errorMessage: msg,
-            errorType: 'FetchRecordsError',
-            stackTrace: new Error().stack,
-        };
-    }
-    console.log(`Received: Inserts = ${fetchResult.s3Data.insert.length}, Deletes =  ${fetchResult.s3Data.delete.length}`);
-    const s3DataFile = {
-        insert: { [TARGET_TABLE_NAME]: fetchResult.s3Data.insert },
-        delete: { [TARGET_TABLE_NAME]: fetchResult.s3Data.delete }
-    };
-    const s3Result = await copyToS3(request.bucket, request.file, JSON.stringify(s3DataFile));
-    if (!s3Result.success) {
-        return {
-            errorMessage: `${s3Result.error}`,
-            errorType: 'CopyToS3Error',
-            stackTrace: new Error().stack,
-        };
-    }
-    return {
-        state: {
-            transactionsCursor: fetchResult.nextCursor
-        },
-        schema: {
-            transactions: {
-                primary_key: ['Event ID']
-            }
-        },
-        hasMore: false
-    };
-};
-exports.handler = handler;
 async function copyToS3(bucket, key, data) {
     return new Promise((resolve, reject) => {
         const params = {
