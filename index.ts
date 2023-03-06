@@ -238,7 +238,20 @@ async function fetchRecords(request: IFivetranRequest): Promise<IFetchResponse> 
                           .map(item => moment(item['Created At (UTC)'], 'YYYY-MM-DD hh:mm:ss'))
                           .sort((a, b) => a.diff(b));
 
-    const nextCursor = createdAtDates.length ? createdAtDates[ createdAtDates.length - 1 ].format() : request.state.transactionsCursor;
+    let nextCursor = '';
+    if(createdAtDates.length) {
+        let useLastCreatedAt = false;
+        if(request.state.transactionsCursor) {
+            const transactionsCursorMoment = moment(request.state.transactionsCursor);
+            useLastCreatedAt = createdAtDates[ createdAtDates.length - 1 ].isAfter(transactionsCursorMoment);
+        }
+
+        if(useLastCreatedAt) {
+            nextCursor = createdAtDates[createdAtDates.length - 1].format();
+        }
+    }else{
+        nextCursor = `${request.state.transactionsCursor}`;
+    }
 
     return {
         nextCursor: `${nextCursor}`,
