@@ -233,9 +233,8 @@ async function fetchRecords(request: IFivetranRequest): Promise<IFetchResponse> 
     }
 
     const data = result.data ?? [];
-    // TODO: Is this the correct date field to use to move the "cursor" forward?
     const createdAtDates = data
-                          .map(item => moment(item['Created At (UTC)'], 'YYYY-MM-DD hh:mm:ss'))
+                          .map(item => moment(item['Started At (UTC)'], 'YYYY-MM-DD hh:mm:ss'))
                           .sort((a, b) => a.diff(b));
 
     let nextCursor = '';
