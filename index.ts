@@ -15,8 +15,6 @@ import {
 
 const s3 = new AWS.S3();
 
-const TARGET_TABLE_NAME = 'robin_analytics';
-
 export const handler = async (
   request: IFivetranRequest,
   context: Context,
@@ -62,9 +60,14 @@ export const handler = async (
     `Received: Inserts = ${fetchResult.s3Data.insert.length}, Deletes =  ${fetchResult.s3Data.delete.length}`,
   );
 
+  let targetTableName = 'robin_analytics';
+  if (request.secrets.tableName) {
+    targetTableName = request.secrets.tableName;
+  }
+
   const s3DataFile = {
-    insert: { [TARGET_TABLE_NAME]: fetchResult.s3Data.insert },
-    delete: { [TARGET_TABLE_NAME]: fetchResult.s3Data.delete },
+    insert: { [targetTableName]: fetchResult.s3Data.insert },
+    delete: { [targetTableName]: fetchResult.s3Data.delete },
   };
 
   const s3Result = await copyToS3(
@@ -87,7 +90,7 @@ export const handler = async (
       transactionsCursor: fetchResult.nextCursor,
     },
     schema: {
-      [TARGET_TABLE_NAME]: {
+      [targetTableName]: {
         primary_key: ['Event ID'],
       },
     },
