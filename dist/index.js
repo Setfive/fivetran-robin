@@ -32,7 +32,6 @@ const moment_1 = __importDefault(require("moment"));
 const axios_1 = __importDefault(require("axios"));
 const sync_1 = require("csv-parse/sync");
 const s3 = new AWS.S3();
-const TARGET_TABLE_NAME = 'robin_analytics';
 const handler = async (request, context) => {
     const missingSecrets = [];
     if (!request.secrets.apiKey) {
@@ -62,9 +61,13 @@ const handler = async (request, context) => {
         };
     }
     console.log(`Received: Inserts = ${fetchResult.s3Data.insert.length}, Deletes =  ${fetchResult.s3Data.delete.length}`);
+    let targetTableName = 'robin_analytics';
+    if (request.secrets.tableName) {
+        targetTableName = request.secrets.tableName;
+    }
     const s3DataFile = {
-        insert: { [TARGET_TABLE_NAME]: fetchResult.s3Data.insert },
-        delete: { [TARGET_TABLE_NAME]: fetchResult.s3Data.delete }
+        insert: { [targetTableName]: fetchResult.s3Data.insert },
+        delete: { [targetTableName]: fetchResult.s3Data.delete },
     };
     const s3Result = await copyToS3(request.bucket, request.file, JSON.stringify(s3DataFile));
     if (!s3Result.success) {
@@ -77,14 +80,14 @@ const handler = async (request, context) => {
     const hasMore = fetchResult.nextCursor !== request.state.transactionsCursor;
     const result = {
         state: {
-            transactionsCursor: fetchResult.nextCursor
+            transactionsCursor: fetchResult.nextCursor,
         },
         schema: {
-            [TARGET_TABLE_NAME]: {
-                primary_key: ['Event ID']
-            }
+            [targetTableName]: {
+                primary_key: ['Event ID'],
+            },
         },
-        hasMore: hasMore
+        hasMore: hasMore,
     };
     console.log(JSON.stringify(result, null, 4));
     return result;
@@ -124,8 +127,8 @@ async function doFetchRecords(request) {
         const apiResult = await axios_1.default.post(url, payload, {
             headers: {
                 Authorization: `Access-Token ${request.secrets.apiKey}`,
-                'Content-Type': 'application/json'
-            }
+                'Content-Type': 'application/json',
+            },
         });
         createExportResult = apiResult.data;
     }
@@ -134,13 +137,13 @@ async function doFetchRecords(request) {
             const axiosError = e;
             return {
                 success: false,
-                error: `Robin API Error: HTTP ${axiosError.code} ${JSON.stringify(axiosError.response?.data)}`
+                error: `Robin API Error: HTTP ${axiosError.code} ${JSON.stringify(axiosError.response?.data)}`,
             };
         }
         else {
             return {
                 success: false,
-                error: `${JSON.stringify(e)}`
+                error: `${JSON.stringify(e)}`,
             };
         }
     }
@@ -148,7 +151,7 @@ async function doFetchRecords(request) {
     if (createExportResult.meta.status !== 'ACCEPTED') {
         return {
             success: false,
-            error: `${createExportResult.meta.status}: ${createExportResult.meta.message}`
+            error: `${createExportResult.meta.status}: ${createExportResult.meta.message}`,
         };
     }
     const exportId = createExportResult.data.export_id;
@@ -162,13 +165,13 @@ async function doFetchRecords(request) {
             const apiResult = await axios_1.default.get(url, {
                 headers: {
                     Authorization: `Access-Token ${request.secrets.apiKey}`,
-                    'Content-Type': 'application/json'
-                }
+                    'Content-Type': 'application/json',
+                },
             });
             const records = (0, sync_1.parse)(apiResult.data, { columns: true });
             return {
                 success: true,
-                data: records
+                data: records,
             };
         }
         catch (e) {
@@ -177,14 +180,14 @@ async function doFetchRecords(request) {
                 if (axiosError.code !== 'ERR_BAD_REQUEST') {
                     return {
                         success: false,
-                        error: `Robin API Error: HTTP (${axiosError.status}) ${axiosError.code} ${JSON.stringify(axiosError.response?.data)}`
+                        error: `Robin API Error: HTTP (${axiosError.status}) ${axiosError.code} ${JSON.stringify(axiosError.response?.data)}`,
                     };
                 }
             }
             else {
                 return {
                     success: false,
-                    error: `${JSON.stringify(e)}`
+                    error: `${JSON.stringify(e)}`,
                 };
             }
         }
@@ -193,7 +196,7 @@ async function doFetchRecords(request) {
     } while (numAttempts < 5);
     return {
         success: false,
-        error: `Robin API Error: Tried 5 times and gave up on ${url}`
+        error: `Robin API Error: Tried 5 times and gave up on ${url}`,
     };
 }
 async function sleep(sleepTimeMs) {
@@ -204,7 +207,7 @@ async function copyToS3(bucket, key, data) {
         const params = {
             Bucket: bucket,
             Key: key,
-            Body: data
+            Body: data,
         };
         s3.putObject(params, (err, data) => {
             if (err) {
@@ -222,9 +225,8 @@ async function fetchRecords(request) {
         throw new Error(result.error);
     }
     const data = result.data ?? [];
-    // TODO: Is this the correct date field to use to move the "cursor" forward?
     const createdAtDates = data
-        .map(item => (0, moment_1.default)(item['Created At (UTC)'], 'YYYY-MM-DD hh:mm:ss'))
+        .map((item) => (0, moment_1.default)(item['Started At (UTC)'], 'YYYY-MM-DD hh:mm:ss'))
         .sort((a, b) => a.diff(b));
     let nextCursor = '';
     if (createdAtDates.length) {
@@ -244,7 +246,7 @@ async function fetchRecords(request) {
         nextCursor: `${nextCursor}`,
         s3Data: {
             delete: [],
-            insert: data
-        }
+            insert: data,
+        },
     };
 }

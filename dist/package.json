@@ -5,6 +5,7 @@
   "main": "lambda.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
+    "format": "prettier --write \"*.ts\"",
     "prebuild": "rm -rf dist",
     "build": "tsc",
     "postbuild": "cp package.json package-lock.json dist/ && cd dist && npm install --production && zip -r ../latest.zip ."
@@ -24,6 +25,7 @@
     "@types/aws-sdk": "^2.7.0",
     "@types/node": "^18.14.4",
     "aws-sdk": "^2.1327.0",
+    "prettier": "^2.8.5",
     "typescript": "^4.9.5"
   },
   "dependencies": {
