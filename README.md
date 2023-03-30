@@ -31,4 +31,15 @@ The required secrets are:
 * **organizationId** - Your Robin Organization ID
 
 These are optional additional configurations:
-* **startDate** - The earliest date to sync data from. 
+* **startDate** - The earliest date to sync data from in format "2008-01-01T00:00:00Z" (default)
+* **tableName** - The destination table name. Defaults to "robin_analytics"
+
+## Sync
+
+After everything is set up Fivetran will kick of a "full sync" of your data. Subsequent syncs will be incremental 
+from the time of the last sync to the current time. 
+Assuming everything worked, you should see a table named "robin_analytics" in your destination.
+
+## Help!
+
+Stuck? Something didn't work? You can reach us at [contact@setfive.com]()
